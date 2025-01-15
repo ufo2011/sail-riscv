@@ -38,12 +38,13 @@ SOURCE_DIR ?= ../../source
 SPECIALIZE_TYPE ?= RISCV
 
 SOFTFLOAT_OPTS ?= \
+  -DSOFTFLOAT_ROUND_ODD
 
 
 DELETE = rm -f
 C_INCLUDES = -I. -I$(SOURCE_DIR)/$(SPECIALIZE_TYPE) -I$(SOURCE_DIR)/include
 COMPILE_C = \
-  gcc -c -Werror-implicit-function-declaration \
+  $(CC) -c -Werror-implicit-function-declaration \
     $(SOFTFLOAT_OPTS) $(C_INCLUDES) -O2 -o $@
 MAKELIB = ar crs $@
 

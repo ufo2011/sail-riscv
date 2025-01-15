@@ -6,7 +6,7 @@
 (*  in the prover_snapshots directory (which include copies of their                     *)
 (*  licences), is subject to the BSD two-clause licence below.                           *)
 (*                                                                                       *)
-(*  Copyright (c) 2017-2021                                                              *)
+(*  Copyright (c) 2017-2023                                                              *)
 (*    Prashanth Mundkur                                                                  *)
 (*    Rishiyur S. Nikhil and Bluespec, Inc.                                              *)
 (*    Jon French                                                                         *)
@@ -23,6 +23,8 @@
 (*    Microsoft, for contributions by Robert Norton-Wright and Nathaniel Wesley Filardo  *)
 (*    Peter Rugg                                                                         *)
 (*    Aril Computer Corp., for contributions by Scott Johnson                            *)
+(*    Philipp Tomsich                                                                    *)
+(*    VRULL GmbH, for contributions by its employees                                     *)
 (*                                                                                       *)
 (*  All rights reserved.                                                                 *)
 (*                                                                                       *)
@@ -69,6 +71,7 @@
 Require Import Sail.Base.
 Require Import String.
 Require Import List.
+Require Import Lia.
 Import List.ListNotations.
 Open Scope Z.
 
@@ -146,20 +149,6 @@ match vs with
 | (h::_) => returnm h
 | _ => Fail "empty list in internal_pick"
 end.
-Definition undefined_string {rv e} (_:unit) : monad rv string e := returnm ""%string.
-Definition undefined_unit {rv e} (_:unit) : monad rv unit e := returnm tt.
-Definition undefined_int {rv e} (_:unit) : monad rv Z e := returnm (0:ii).
-(*val undefined_vector : forall 'rv 'a 'e. integer -> 'a -> monad 'rv (list 'a) 'e*)
-Definition undefined_vector {rv a e} len (u : a) `{ArithFact (len >=? 0)} : monad rv (vec a len) e := returnm (vec_init u len).
-(*val undefined_bitvector : forall 'rv 'a 'e. Bitvector 'a => integer -> monad 'rv 'a 'e*)
-Definition undefined_bitvector {rv e} len `{ArithFact (len >=? 0)} : monad rv (mword len) e := returnm (mword_of_int 0).
-(*val undefined_bits : forall 'rv 'a 'e. Bitvector 'a => integer -> monad 'rv 'a 'e*)
-Definition undefined_bits {rv e} := @undefined_bitvector rv e.
-Definition undefined_bit {rv e} (_:unit) : monad rv bitU e := returnm BU.
-(*Definition undefined_real {rv e} (_:unit) : monad rv real e := returnm (realFromFrac 0 1).*)
-Definition undefined_range {rv e} i j `{ArithFact (i <=? j)} : monad rv {z : Z & ArithFact (i <=? z <=? j)} e := returnm (build_ex i).
-Definition undefined_atom {rv e} i : monad rv Z e := returnm i.
-Definition undefined_nat {rv e} (_:unit) : monad rv Z e := returnm (0:ii).
 
 Definition skip {rv e} (_:unit) : monad rv unit e := returnm tt.
 
@@ -190,7 +179,7 @@ unbool_comparisons.
 unbool_comparisons_goal.
 assert (Z.abs n = n). { rewrite Z.abs_eq; auto with zarith. }
 rewrite <- H at 3.
-lapply (ZEuclid.mod_always_pos m n); omega.
+lapply (ZEuclid.mod_always_pos m n); lia.
 Qed.
 
 (* Override the more general version *)
@@ -209,7 +198,8 @@ Definition string_of_int z := DecimalString.NilZero.string_of_int (Z.to_int z).
 Axiom sys_enable_writable_misa : unit -> bool.
 Axiom sys_enable_rvc : unit -> bool.
 Axiom sys_enable_fdext : unit -> bool.
-Axiom sys_enable_next : unit -> bool.
+Axiom sys_enable_zfinx : unit -> bool.
+Axiom sys_enable_writable_fiom : unit -> bool.
 
 (* The constraint solver can do this itself, but a Coq bug puts
    anonymous_subproof into the term instead of an actual subproof. *)
@@ -217,6 +207,6 @@ Lemma n_leading_spaces_fact {w__0} :
   w__0 >= 0 -> exists ex17629_ : Z, 1 + w__0 = 1 + ex17629_ /\ 0 <= ex17629_.
 intro.
 exists w__0.
-omega.
+lia.
 Qed.
-Hint Resolve n_leading_spaces_fact : sail.
+#[export] Hint Resolve n_leading_spaces_fact : sail.

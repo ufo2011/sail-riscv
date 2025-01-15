@@ -1,81 +1,29 @@
 /*=======================================================================================*/
-/*  RISCV Sail Model                                                                     */
-/*                                                                                       */
 /*  This Sail RISC-V architecture model, comprising all files and                        */
-/*  directories except for the snapshots of the Lem and Sail libraries                   */
-/*  in the prover_snapshots directory (which include copies of their                     */
-/*  licences), is subject to the BSD two-clause licence below.                           */
+/*  directories except where otherwise noted is subject the BSD                          */
+/*  two-clause license in the LICENSE file.                                              */
 /*                                                                                       */
-/*  Copyright (c) 2017-2021                                                              */
-/*    Prashanth Mundkur                                                                  */
-/*    Rishiyur S. Nikhil and Bluespec, Inc.                                              */
-/*    Jon French                                                                         */
-/*    Brian Campbell                                                                     */
-/*    Robert Norton-Wright                                                               */
-/*    Alasdair Armstrong                                                                 */
-/*    Thomas Bauereiss                                                                   */
-/*    Shaked Flur                                                                        */
-/*    Christopher Pulte                                                                  */
-/*    Peter Sewell                                                                       */
-/*    Alexander Richardson                                                               */
-/*    Hesham Almatary                                                                    */
-/*    Jessica Clarke                                                                     */
-/*    Microsoft, for contributions by Robert Norton-Wright and Nathaniel Wesley Filardo  */
-/*    Peter Rugg                                                                         */
-/*    Aril Computer Corp., for contributions by Scott Johnson                            */
-/*                                                                                       */
-/*  All rights reserved.                                                                 */
-/*                                                                                       */
-/*  This software was developed by the above within the Rigorous                         */
-/*  Engineering of Mainstream Systems (REMS) project, partly funded by                   */
-/*  EPSRC grant EP/K008528/1, at the Universities of Cambridge and                       */
-/*  Edinburgh.                                                                           */
-/*                                                                                       */
-/*  This software was developed by SRI International and the University of               */
-/*  Cambridge Computer Laboratory (Department of Computer Science and                    */
-/*  Technology) under DARPA/AFRL contract FA8650-18-C-7809 ("CIFV"), and                 */
-/*  under DARPA contract HR0011-18-C-0016 ("ECATS") as part of the DARPA                 */
-/*  SSITH research programme.                                                            */
-/*                                                                                       */
-/*  This project has received funding from the European Research Council                 */
-/*  (ERC) under the European Union’s Horizon 2020 research and innovation                */
-/*  programme (grant agreement 789108, ELVER).                                           */
-/*                                                                                       */
-/*                                                                                       */
-/*  Redistribution and use in source and binary forms, with or without                   */
-/*  modification, are permitted provided that the following conditions                   */
-/*  are met:                                                                             */
-/*  1. Redistributions of source code must retain the above copyright                    */
-/*     notice, this list of conditions and the following disclaimer.                     */
-/*  2. Redistributions in binary form must reproduce the above copyright                 */
-/*     notice, this list of conditions and the following disclaimer in                   */
-/*     the documentation and/or other materials provided with the                        */
-/*     distribution.                                                                     */
-/*                                                                                       */
-/*  THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS''                   */
-/*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED                    */
-/*  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A                      */
-/*  PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR                  */
-/*  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,                         */
-/*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT                     */
-/*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF                     */
-/*  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND                  */
-/*  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,                   */
-/*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT                   */
-/*  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF                   */
-/*  SUCH DAMAGE.                                                                         */
+/*  SPDX-License-Identifier: BSD-2-Clause                                                */
 /*=======================================================================================*/
 
 /* Basic type and function definitions used pervasively in the model. */
 
+// Function used to determine if an extension is enabled in the current configuration.
+// This means an extension is implemented & supported, *and* any necessary bits
+// are set in the relevant CSRs (misa, mstatus, etc.) to enable its use. It is possible
+// for some extensions to be supported in hardware, but temporarily disabled via a CSR,
+// in which case this function should return false.
+val extensionEnabled : extension -> bool
+scattered function extensionEnabled
+
 /* this value is only defined for the runtime platform for ELF loading
  * checks, and not used in the model.
  */
-let xlen_val = sizeof(xlen)
+let xlen_val = xlen
 
-let xlen_max_unsigned = 2 ^ sizeof(xlen) - 1
-let xlen_max_signed = 2 ^ (sizeof(xlen) - 1) - 1
-let xlen_min_signed = 0 - 2 ^ (sizeof(xlen) - 1)
+let xlen_max_unsigned = 2 ^ xlen - 1
+let xlen_max_signed = 2 ^ (xlen - 1) - 1
+let xlen_min_signed = 0 - 2 ^ (xlen - 1)
 
 type half = bits(16)
 type word = bits(32)
@@ -88,10 +36,9 @@ type csreg   = bits(12)   /* CSR addressing */
 
 /* register file indexing */
 
-type regno ('n : Int), 0 <= 'n < 32 = atom('n)
+type regno = range(0, 31)
 
-val regidx_to_regno : bits(5) -> {'n, 0 <= 'n < 32. regno('n)}
-function regidx_to_regno b = let 'r = unsigned(b) in r
+function regidx_to_regno (b : regidx) -> regno = unsigned(b)
 
 /* mapping RVC register indices into normal indices */
 val creg2reg_idx : cregidx -> regidx
@@ -141,12 +88,17 @@ function privLevel_to_bits (p) =
     Machine    => 0b11
   }
 
+/*!
+ * Converts the given 2-bit privilege level code to the [Privilege] enum.
+ * Calling with a reserved code will result in an internal error.
+ */
 val privLevel_of_bits : priv_level -> Privilege
 function privLevel_of_bits (p) =
   match (p) {
     0b00 => User,
     0b01 => Supervisor,
-    0b11 => Machine
+    0b11 => Machine,
+    0b10 => internal_error(__FILE__, __LINE__, "Invalid privilege level: " ^ BitStr(p))
   }
 
 val privLevel_to_str : Privilege -> string
@@ -284,7 +236,7 @@ function exceptionType_to_str(e) =
     E_Breakpoint()         => "breakpoint",
     E_Load_Addr_Align()    => "misaligned-load",
     E_Load_Access_Fault()  => "load-access-fault",
-    E_SAMO_Addr_Align()    => "misaliged-store/amo",
+    E_SAMO_Addr_Align()    => "misaligned-store/amo",
     E_SAMO_Access_Fault()  => "store/amo-access-fault",
     E_U_EnvCall()          => "u-call",
     E_S_EnvCall()          => "s-call",
@@ -300,22 +252,6 @@ function exceptionType_to_str(e) =
   }
 
 overload to_str = {exceptionType_to_str}
-
-/* model-internal exceptions */
-
-union exception = {
-  Error_not_implemented : string,
-  Error_internal_error  : unit
-}
-
-val not_implemented : forall ('a : Type). string -> 'a effect {escape}
-function not_implemented message = throw(Error_not_implemented(message))
-
-val internal_error : forall ('a : Type). string -> 'a effect {escape}
-function internal_error(s) = {
-    assert (false, s);
-    throw Error_internal_error()
-}
 
 /* trap modes */
 
@@ -390,6 +326,8 @@ enum amoop = {AMOSWAP, AMOADD, AMOXOR, AMOAND, AMOOR,
               AMOMIN, AMOMAX, AMOMINU, AMOMAXU}   /* AMO ops */
 enum csrop = {CSRRW, CSRRS, CSRRC}                /* CSR ops */
 
+enum cbop_zicbom = {CBO_CLEAN, CBO_FLUSH, CBO_INVAL}  /* Zicbom ops */
+
 enum brop_zba = {RISCV_SH1ADD, RISCV_SH2ADD, RISCV_SH3ADD}
 
 enum brop_zbb = {RISCV_ANDN, RISCV_ORN, RISCV_XNOR, RISCV_MAX,
@@ -409,22 +347,10 @@ enum biop_zbs = {RISCV_BCLRI, RISCV_BEXTI, RISCV_BINVI, RISCV_BSETI}
 
 enum extop_zbb = {RISCV_SEXTB, RISCV_SEXTH, RISCV_ZEXTH}
 
-val sep : unit <-> string
-mapping sep : unit <-> string = {
-  ()     <-> opt_spc() ^ "," ^ def_spc()
-}
+enum zicondop = {RISCV_CZERO_EQZ, RISCV_CZERO_NEZ}
 
-mapping bool_bits : bool <-> bits(1) = {
-  true   <-> 0b1,
-  false  <-> 0b0
-}
-
-mapping bool_not_bits : bool <-> bits(1) = {
-  true   <-> 0b0,
-  false  <-> 0b1
-}
-
-mapping size_bits : word_width <-> bits(2) = {
+// Get the bit encoding of word_width.
+mapping size_enc : word_width <-> bits(2) = {
   BYTE   <-> 0b00,
   HALF   <-> 0b01,
   WORD   <-> 0b10,
@@ -438,10 +364,29 @@ mapping size_mnemonic : word_width <-> string = {
   DOUBLE <-> "d"
 }
 
-val word_width_bytes : word_width -> {'s, 's == 1 | 's == 2 | 's == 4 | 's == 8 . atom('s)}
-function word_width_bytes width = match width {
-  BYTE   => 1,
-  HALF   => 2,
-  WORD   => 4,
-  DOUBLE => 8
+mapping size_bytes : word_width <-> {1, 2, 4, 8} = {
+  BYTE   <-> 1,
+  HALF   <-> 2,
+  WORD   <-> 4,
+  DOUBLE <-> 8,
+}
+
+struct mul_op = {
+  high       : bool,
+  signed_rs1 : bool,
+  signed_rs2 : bool
+}
+
+/*!
+ * Raise an internal error reporting that width w is invalid for access kind, k,
+ * and current xlen. The file name and line number should be passed in as the
+ * first two arguments using the __FILE__ and __LINE__ built-in macros.
+ * This is mainly used to supress Sail warnings about incomplete matches and
+ * should be unreachable. See https://github.com/riscv/sail-riscv/issues/194
+ * and https://github.com/riscv/sail-riscv/pull/197 .
+ */
+val report_invalid_width : forall ('a : Type). (string, int, word_width, string) -> 'a
+function report_invalid_width(f , l, w, k) -> 'a = {
+  internal_error(f, l, "Invalid width, " ^ size_mnemonic(w) ^ ", for " ^ k ^
+     " with xlen=" ^ dec_str(xlen))
 }
