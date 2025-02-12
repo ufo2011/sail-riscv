@@ -1,201 +1,62 @@
 /*=======================================================================================*/
-/*  RISCV Sail Model                                                                     */
-/*                                                                                       */
 /*  This Sail RISC-V architecture model, comprising all files and                        */
-/*  directories except for the snapshots of the Lem and Sail libraries                   */
-/*  in the prover_snapshots directory (which include copies of their                     */
-/*  licences), is subject to the BSD two-clause licence below.                           */
+/*  directories except where otherwise noted is subject the BSD                          */
+/*  two-clause license in the LICENSE file.                                              */
 /*                                                                                       */
-/*  Copyright (c) 2017-2021                                                              */
-/*    Prashanth Mundkur                                                                  */
-/*    Rishiyur S. Nikhil and Bluespec, Inc.                                              */
-/*    Jon French                                                                         */
-/*    Brian Campbell                                                                     */
-/*    Robert Norton-Wright                                                               */
-/*    Alasdair Armstrong                                                                 */
-/*    Thomas Bauereiss                                                                   */
-/*    Shaked Flur                                                                        */
-/*    Christopher Pulte                                                                  */
-/*    Peter Sewell                                                                       */
-/*    Alexander Richardson                                                               */
-/*    Hesham Almatary                                                                    */
-/*    Jessica Clarke                                                                     */
-/*    Microsoft, for contributions by Robert Norton-Wright and Nathaniel Wesley Filardo  */
-/*    Peter Rugg                                                                         */
-/*    Aril Computer Corp., for contributions by Scott Johnson                            */
-/*                                                                                       */
-/*  All rights reserved.                                                                 */
-/*                                                                                       */
-/*  This software was developed by the above within the Rigorous                         */
-/*  Engineering of Mainstream Systems (REMS) project, partly funded by                   */
-/*  EPSRC grant EP/K008528/1, at the Universities of Cambridge and                       */
-/*  Edinburgh.                                                                           */
-/*                                                                                       */
-/*  This software was developed by SRI International and the University of               */
-/*  Cambridge Computer Laboratory (Department of Computer Science and                    */
-/*  Technology) under DARPA/AFRL contract FA8650-18-C-7809 ("CIFV"), and                 */
-/*  under DARPA contract HR0011-18-C-0016 ("ECATS") as part of the DARPA                 */
-/*  SSITH research programme.                                                            */
-/*                                                                                       */
-/*  This project has received funding from the European Research Council                 */
-/*  (ERC) under the European Union’s Horizon 2020 research and innovation                */
-/*  programme (grant agreement 789108, ELVER).                                           */
-/*                                                                                       */
-/*                                                                                       */
-/*  Redistribution and use in source and binary forms, with or without                   */
-/*  modification, are permitted provided that the following conditions                   */
-/*  are met:                                                                             */
-/*  1. Redistributions of source code must retain the above copyright                    */
-/*     notice, this list of conditions and the following disclaimer.                     */
-/*  2. Redistributions in binary form must reproduce the above copyright                 */
-/*     notice, this list of conditions and the following disclaimer in                   */
-/*     the documentation and/or other materials provided with the                        */
-/*     distribution.                                                                     */
-/*                                                                                       */
-/*  THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS''                   */
-/*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED                    */
-/*  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A                      */
-/*  PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR                  */
-/*  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,                         */
-/*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT                     */
-/*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF                     */
-/*  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND                  */
-/*  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,                   */
-/*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT                   */
-/*  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF                   */
-/*  SUCH DAMAGE.                                                                         */
+/*  SPDX-License-Identifier: BSD-2-Clause                                                */
 /*=======================================================================================*/
 
 /* Machine-mode and supervisor-mode functionality. */
-
 
 /* CSR access control */
 
 function csrAccess(csr : csreg) -> csrRW = csr[11..10]
 function csrPriv(csr : csreg) -> priv_level = csr[9..8]
 
-function is_CSR_defined (csr : csreg, p : Privilege) -> bool =
-  match (csr) {
-    /* machine mode: informational */
-    0xf11 => p == Machine, // mvendorid
-    0xf12 => p == Machine, // marchdid
-    0xf13 => p == Machine, // mimpid
-    0xf14 => p == Machine, // mhartid
-    /* machine mode: trap setup */
-    0x300 => p == Machine, // mstatus
-    0x301 => p == Machine, // misa
-    0x302 => p == Machine & (haveSupMode() | haveNExt()), // medeleg
-    0x303 => p == Machine & (haveSupMode() | haveNExt()), // mideleg
-    0x304 => p == Machine, // mie
-    0x305 => p == Machine, // mtvec
-    0x306 => p == Machine & haveUsrMode(), // mcounteren
-    0x310 => p == Machine & (sizeof(xlen) == 32), // mstatush
-    0x320 => p == Machine, // mcountinhibit
-    /* machine mode: trap handling */
-    0x340 => p == Machine, // mscratch
-    0x341 => p == Machine, // mepc
-    0x342 => p == Machine, // mcause
-    0x343 => p == Machine, // mtval
-    0x344 => p == Machine, // mip
+// Check that the CSR access is made with sufficient privilege.
+function check_CSR_priv(csr : csreg, p : Privilege) -> bool =
+  privLevel_to_bits(p) >=_u csrPriv(csr)
 
-    0x3A0 => p == Machine,                        // pmpcfg0
-    0x3A1 => p == Machine & (sizeof(xlen) == 32), // pmpcfg1
-    0x3A2 => p == Machine,                        // pmpcfg2
-    0x3A3 => p == Machine & (sizeof(xlen) == 32), // pmpcfg3
-
-    0x3B0 => p == Machine, // pmpaddr0
-    0x3B1 => p == Machine, // pmpaddr1
-    0x3B2 => p == Machine, // pmpaddr2
-    0x3B3 => p == Machine, // pmpaddr3
-    0x3B4 => p == Machine, // pmpaddr4
-    0x3B5 => p == Machine, // pmpaddr5
-    0x3B6 => p == Machine, // pmpaddr6
-    0x3B7 => p == Machine, // pmpaddr7
-    0x3B8 => p == Machine, // pmpaddr8
-    0x3B9 => p == Machine, // pmpaddr9
-    0x3BA => p == Machine, // pmpaddrA
-    0x3BB => p == Machine, // pmpaddrB
-    0x3BC => p == Machine, // pmpaddrC
-    0x3BD => p == Machine, // pmpaddrD
-    0x3BE => p == Machine, // pmpaddrE
-    0x3BF => p == Machine, // pmpaddrF
-
-    /* counters */
-    0xB00 => p == Machine, // mcycle
-    0xB02 => p == Machine, // minstret
-
-    0xB80 => p == Machine & (sizeof(xlen) == 32), // mcycleh
-    0xB82 => p == Machine & (sizeof(xlen) == 32), // minstreth
-
-    /* disabled trigger/debug module */
-    0x7a0 => p == Machine,
-
-    /* supervisor mode: trap setup */
-    0x100 => haveSupMode() & (p == Machine | p == Supervisor), // sstatus
-    0x102 => haveSupMode() & haveNExt() & (p == Machine | p == Supervisor), // sedeleg
-    0x103 => haveSupMode() & haveNExt() & (p == Machine | p == Supervisor), // sideleg
-    0x104 => haveSupMode() & (p == Machine | p == Supervisor), // sie
-    0x105 => haveSupMode() & (p == Machine | p == Supervisor), // stvec
-    0x106 => haveSupMode() & (p == Machine | p == Supervisor), // scounteren
-
-    /* supervisor mode: trap handling */
-    0x140 => haveSupMode() & (p == Machine | p == Supervisor), // sscratch
-    0x141 => haveSupMode() & (p == Machine | p == Supervisor), // sepc
-    0x142 => haveSupMode() & (p == Machine | p == Supervisor), // scause
-    0x143 => haveSupMode() & (p == Machine | p == Supervisor), // stval
-    0x144 => haveSupMode() & (p == Machine | p == Supervisor), // sip
-
-    /* supervisor mode: address translation */
-    0x180 => haveSupMode() & (p == Machine | p == Supervisor), // satp
-
-    /* user mode: counters */
-    0xC00 => haveUsrMode(),    // cycle
-    0xC01 => haveUsrMode(),    // time
-    0xC02 => haveUsrMode(),    // instret
-
-    0xC80 => haveUsrMode() & (sizeof(xlen) == 32),     // cycleh
-    0xC81 => haveUsrMode() & (sizeof(xlen) == 32),     // timeh
-    0xC82 => haveUsrMode() & (sizeof(xlen) == 32),     // instreth
-
-    /* user mode: Zkr */
-    0x015 => haveZkr(),
-
-    /* check extensions */
-    _     => ext_is_CSR_defined(csr, p)
-  }
-
-val check_CSR_access : (csrRW, priv_level, Privilege, bool) -> bool
-function check_CSR_access(csrrw, csrpr, p, isWrite) =
-    (~ (isWrite == true & csrrw == 0b11))  /* read/write */
-  & (privLevel_to_bits(p) >=_u csrpr)      /* privilege */
+// Check that the CSR access isn't a write and read-only.
+function check_CSR_access(csr : csreg, isWrite : bool) -> bool =
+  not(isWrite & (csrAccess(csr) == 0b11))
 
 function check_TVM_SATP(csr : csreg, p : Privilege) -> bool =
-  ~ (csr == 0x180 & p == Supervisor & mstatus.TVM() == 0b1)
+  not(csr == 0x180 & p == Supervisor & mstatus[TVM] == 0b1)
 
-function check_Counteren(csr : csreg, p : Privilege) -> bool =
-  match(csr, p) {
-    (0xC00, Supervisor) => mcounteren.CY() == 0b1,
-    (0xC01, Supervisor) => mcounteren.TM() == 0b1,
-    (0xC02, Supervisor) => mcounteren.IR() == 0b1,
+// There are several features that are controlled by machine/supervisor enable
+// bits (m/senvcfg, m/scounteren, etc.). This abstracts that logic.
+function feature_enabled_for_priv(p : Privilege, machine_enable_bit : bit, supervisor_enable_bit : bit) -> bool = match p {
+  Machine => true,
+  Supervisor => machine_enable_bit == bitone,
+  User => machine_enable_bit == bitone & (not(extensionEnabled(Ext_S)) | supervisor_enable_bit == bitone),
+}
 
-    (0xC00, User) => mcounteren.CY() == 0b1 & ((~ (haveSupMode())) | scounteren.CY() == 0b1),
-    (0xC01, User) => mcounteren.TM() == 0b1 & ((~ (haveSupMode())) | scounteren.TM() == 0b1),
-    (0xC02, User) => mcounteren.IR() == 0b1 & ((~ (haveSupMode())) | scounteren.IR() == 0b1),
+// Return true if the counter is enabled OR the CSR is not a counter.
+function check_Counteren(csr : csreg, p : Privilege) -> bool = {
+  // Check if it is not a counter.
+  if csr <_u 0xC00 | 0xC1F <_u csr then return true;
 
-    (_, _) => /* no HPM counters for now */
-              if   0xC03 <=_u csr & csr <=_u 0xC1F
-              then false
-              else true
-  }
+  // Check the relevant bit in m/scounteren.
+  let index = unsigned(csr[4 .. 0]);
+  feature_enabled_for_priv(p, mcounteren.bits[index], scounteren.bits[index])
+}
 
+// Return true if the stimecmp[h] CSR is accessible OR the CSR is not stimecmp[h].
+function check_Stimecmp(csr : csreg, p : Privilege) -> bool = {
+  // Check if it is not stimecmp.
+  if csr != 0x14D & csr != 0x15D then return true;
+
+  p == Machine | (p == Supervisor & mcounteren[TM] == 0b1 & menvcfg[STCE] == 0b1)
+}
 
 /* Seed may only be accessed if we are doing a write, and access has been
  * allowed in the current priv mode
  */
 function check_seed_CSR (csr : csreg, p : Privilege, isWrite : bool) -> bool = {
-  if ~(csr == 0x015) then {
+  if not(csr == 0x015) then {
     true
-  } else if ~(isWrite) then {
+  } else if not(isWrite) then {
     /* Read-only access to the seed CSR is not allowed */
     false
   } else {
@@ -203,16 +64,20 @@ function check_seed_CSR (csr : csreg, p : Privilege, isWrite : bool) -> bool = {
       Machine => true,
       Supervisor => false, /* TODO: base this on mseccfg */
       User => false, /* TODO: base this on mseccfg */
-      _ => false
     }
   }
 }
 
 function check_CSR(csr : csreg, p : Privilege, isWrite : bool) -> bool =
-    is_CSR_defined(csr, p)
-  & check_CSR_access(csrAccess(csr), csrPriv(csr), p, isWrite)
+    is_CSR_defined(csr)
+  & check_CSR_priv(csr, p)
+  & check_CSR_access(csr, isWrite)
+  // TODO: If we add `p` back to is_CSR_defined() we could move these three
+  // check_ functions back there. We should also rename is_CSR_defined()
+  // to is_CSR_accessible() or similar.
   & check_TVM_SATP(csr, p)
   & check_Counteren(csr, p)
+  & check_Stimecmp(csr, p)
   & check_seed_CSR(csr, p, isWrite)
 
 /* Reservation handling for LR/SC.
@@ -227,25 +92,19 @@ function check_CSR(csr : csreg, p : Privilege, isWrite : bool) -> bool =
  * where cancellation can be performed.
  */
 
-val speculate_conditional = {ocaml: "Platform.speculate_conditional", interpreter: "excl_res", c: "speculate_conditional", lem: "speculate_conditional_success"} : unit -> bool effect {exmem}
+val speculate_conditional = impure {interpreter: "excl_res", c: "speculate_conditional", lem: "speculate_conditional_success"} : unit -> bool
 
-val load_reservation = {ocaml: "Platform.load_reservation", interpreter: "Platform.load_reservation", c: "load_reservation", lem: "load_reservation"} : xlenbits -> unit
-val match_reservation = {ocaml: "Platform.match_reservation", interpreter: "Platform.match_reservation", lem: "match_reservation", c: "match_reservation"} : xlenbits -> bool
-val cancel_reservation = {ocaml: "Platform.cancel_reservation", interpreter: "Platform.cancel_reservation", c: "cancel_reservation", lem: "cancel_reservation"} : unit -> unit
+val load_reservation = impure {interpreter: "Platform.load_reservation", c: "load_reservation", lem: "load_reservation"} : physaddrbits -> unit
+val match_reservation = pure {interpreter: "Platform.match_reservation", lem: "match_reservation", c: "match_reservation"} : physaddrbits -> bool
+val cancel_reservation = impure {interpreter: "Platform.cancel_reservation", c: "cancel_reservation", lem: "cancel_reservation"} : unit -> unit
 
 /* Exception delegation: given an exception and the privilege at which
  * it occured, returns the privilege at which it should be handled.
  */
 function exception_delegatee(e : ExceptionType, p : Privilege) -> Privilege = {
   let idx   = num_of_ExceptionType(e);
-  let super = bit_to_bool(medeleg.bits()[idx]);
-  /* if S-mode is absent, medeleg delegates to U-mode if 'N' is supported. */
-  let user  = if   haveSupMode()
-              then super & haveNExt() & bit_to_bool(sedeleg.bits()[idx])
-              else super & haveNExt();
-  let deleg = if      haveUsrMode() & user  then User
-              else if haveSupMode() & super then Supervisor
-              else                               Machine;
+  let super = bit_to_bool(medeleg.bits[idx]);
+  let deleg = if extensionEnabled(Ext_S) & super then Supervisor else Machine;
   /* We cannot transition to a less-privileged mode. */
   if   privLevel_to_bits(deleg) <_u privLevel_to_bits(p)
   then p else deleg
@@ -256,104 +115,46 @@ function exception_delegatee(e : ExceptionType, p : Privilege) -> Privilege = {
  */
 function findPendingInterrupt(ip : xlenbits) -> option(InterruptType) = {
   let ip = Mk_Minterrupts(ip);
-  if      ip.MEI() == 0b1 then Some(I_M_External)
-  else if ip.MSI() == 0b1 then Some(I_M_Software)
-  else if ip.MTI() == 0b1 then Some(I_M_Timer)
-  else if ip.SEI() == 0b1 then Some(I_S_External)
-  else if ip.SSI() == 0b1 then Some(I_S_Software)
-  else if ip.STI() == 0b1 then Some(I_S_Timer)
-  else if ip.UEI() == 0b1 then Some(I_U_External)
-  else if ip.USI() == 0b1 then Some(I_U_Software)
-  else if ip.UTI() == 0b1 then Some(I_U_Timer)
-  else                         None()
+  if      ip[MEI] == 0b1 then Some(I_M_External)
+  else if ip[MSI] == 0b1 then Some(I_M_Software)
+  else if ip[MTI] == 0b1 then Some(I_M_Timer)
+  else if ip[SEI] == 0b1 then Some(I_S_External)
+  else if ip[SSI] == 0b1 then Some(I_S_Software)
+  else if ip[STI] == 0b1 then Some(I_S_Timer)
+  else                        None()
 }
 
-/* Process the pending interrupts xip at a privilege according to
- * the enabled flags xie and the delegation in xideleg. Return
- * either the set of pending interrupts, or the set of interrupts
- * delegated to the next lower privilege.
- */
-union interrupt_set = {
-  Ints_Pending   : xlenbits,
-  Ints_Delegated : xlenbits,
-  Ints_Empty     : unit
-}
-function processPending(xip : Minterrupts, xie : Minterrupts, xideleg : xlenbits,
-                        priv_enabled : bool) -> interrupt_set = {
-  /* interrupts that are enabled but not delegated are pending */
-  let  effective_pend = xip.bits() & xie.bits() & (~ (xideleg));
-  /* the others are delegated */
-  let  effective_delg = xip.bits() & xideleg;
-  /* we have pending interrupts if this privilege is enabled */
-  if      priv_enabled & (effective_pend != EXTZ(0b0))
-  then    Ints_Pending(effective_pend)
-  else if effective_delg != EXTZ(0b0)
-  then    Ints_Delegated(effective_delg)
-  else    Ints_Empty()
-}
-
-/* Given the current privilege level, iterate over privileges to get a
- * pending set for an enabled privilege. This is only called for M/U or
- * M/S/U systems.
+/* Given the current privilege level, return the pending set
+ * of interrupts for the highest privilege that has any pending.
  *
  * We don't use the lowered views of {xie,xip} here, since the spec
- * allows for example the M_Timer to be delegated to the U-mode.
+ * allows for example the M_Timer to be delegated to the S-mode.
  */
 function getPendingSet(priv : Privilege) -> option((xlenbits, Privilege)) = {
-  assert(haveUsrMode(), "no user mode: M/U or M/S/U system required");
-  let effective_pending = mip.bits() & mie.bits();
-  if  effective_pending == EXTZ(0b0) then None() /* fast path */
-  else {
-    /* Higher privileges than the current one are implicitly enabled,
-     * while lower privileges are blocked.  An unsupported privilege is
-     * considered blocked.
-     */
-    let mIE = priv != Machine | (priv == Machine & mstatus.MIE() == 0b1);
-    let sIE = haveSupMode() & (priv == User | (priv == Supervisor & mstatus.SIE() == 0b1));
-    let uIE = haveNExt() & (priv == User & mstatus.UIE() == 0b1);
-    match processPending(mip, mie, mideleg.bits(), mIE) {
-      Ints_Empty()      => None(),
-      Ints_Pending(p)   => let r = (p, Machine) in Some(r),
-      Ints_Delegated(d) =>
-        if (~ (haveSupMode())) then {
-          if uIE then let r = (d, User) in Some(r)
-          else                             None()
-        } else {
-          /* the delegated bits are pending for S-mode */
-          match processPending(Mk_Minterrupts(d), mie, sideleg.bits(), sIE) {
-            Ints_Empty()      => None(),
-            Ints_Pending(p)   => let r = (p, Supervisor) in Some(r),
-            Ints_Delegated(d) => if   uIE
-                                 then let r = (d, User) in Some(r)
-                                 else None()
-          }
-        }
-    }
-  }
+  // mideleg can only be non-zero if we support Supervisor mode.
+  assert(extensionEnabled(Ext_S) | mideleg.bits == zeros());
+
+  let pending_m = mip.bits & mie.bits & ~(mideleg.bits);
+  let pending_s = mip.bits & mie.bits & mideleg.bits;
+
+  let mIE = (priv == Machine    & mstatus[MIE] == 0b1) | priv == Supervisor | priv == User;
+  let sIE = (priv == Supervisor & mstatus[SIE] == 0b1) | priv == User;
+
+  if      mIE & (pending_m != zeros()) then Some((pending_m, Machine))
+  else if sIE & (pending_s != zeros()) then Some((pending_s, Supervisor))
+  else None()
 }
 
 /* Examine the current interrupt state and return an interrupt to be *
  * handled (if any), and the privilege it should be handled at.
  */
 function dispatchInterrupt(priv : Privilege) -> option((InterruptType, Privilege)) = {
-  /* If we don't have different privilege levels, we don't need to check delegation.
-   * Absence of U-mode implies absence of S-mode.
-   */
-  if (~ (haveUsrMode())) | ((~ (haveSupMode())) & (~ (haveNExt()))) then {
-    assert(priv == Machine, "invalid current privilege");
-    let enabled_pending = mip.bits() & mie.bits();
-    match findPendingInterrupt(enabled_pending) {
-      Some(i) => let r = (i, Machine) in Some(r),
-      None()  => None()
-    }
-  } else {
-    match getPendingSet(priv) {
-      None()      => None(),
-      Some(ip, p) => match findPendingInterrupt(ip) {
-                       None()  => None(),
-                       Some(i) => let r = (i, p) in Some(r)
-                     }
-    }
+  match getPendingSet(priv) {
+    None()       => None(),
+    Some(ip, p)  => match findPendingInterrupt(ip) {
+                      None()  => None(),
+                      Some(i) => Some((i, p)),
+                    }
   }
 }
 
@@ -363,7 +164,6 @@ union ctl_result = {
   CTL_TRAP : sync_exception,
   CTL_SRET : unit,
   CTL_MRET : unit,
-  CTL_URET : unit
 }
 
 /* trap value */
@@ -371,15 +171,15 @@ union ctl_result = {
 function tval(excinfo : option(xlenbits)) -> xlenbits = {
   match (excinfo) {
     Some(e) => e,
-    None()  => EXTZ(0b0)
+    None()  => zeros()
   }
 }
 
 $ifdef RVFI_DII
-val rvfi_trap : unit -> unit effect {wreg}
+val rvfi_trap : unit -> unit
 // TODO: record rvfi_trap_data
 function rvfi_trap () =
-  rvfi_inst_data->rvfi_trap() = 0x01
+  rvfi_inst_data[rvfi_trap] = 0x01
 $else
 val rvfi_trap : unit -> unit
 function rvfi_trap () = ()
@@ -395,16 +195,14 @@ function trap_handler(del_priv : Privilege, intr : bool, c : exc_code, pc : xlen
                       ^ BitStr(c) ^ " at priv " ^ to_str(del_priv)
                       ^ " with tval " ^ BitStr(tval(info)));
 
-  cancel_reservation();
-
   match (del_priv) {
     Machine => {
-       mcause->IsInterrupt() = bool_to_bits(intr);
-       mcause->Cause()       = EXTZ(c);
+       mcause[IsInterrupt] = bool_to_bits(intr);
+       mcause[Cause]       = zero_extend(c);
 
-       mstatus->MPIE() = mstatus.MIE();
-       mstatus->MIE()  = 0b0;
-       mstatus->MPP()  = privLevel_to_bits(cur_privilege);
+       mstatus[MPIE] = mstatus[MIE];
+       mstatus[MIE]  = 0b0;
+       mstatus[MPP]  = privLevel_to_bits(cur_privilege);
        mtval           = tval(info);
        mepc            = pc;
 
@@ -413,22 +211,22 @@ function trap_handler(del_priv : Privilege, intr : bool, c : exc_code, pc : xlen
        handle_trap_extension(del_priv, pc, ext);
 
        if   get_config_print_reg()
-       then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits()));
+       then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits));
 
        prepare_trap_vector(del_priv, mcause)
     },
     Supervisor => {
-       assert (haveSupMode(), "no supervisor mode present for delegation");
+       assert (extensionEnabled(Ext_S), "no supervisor mode present for delegation");
 
-       scause->IsInterrupt() = bool_to_bits(intr);
-       scause->Cause()       = EXTZ(c);
+       scause[IsInterrupt] = bool_to_bits(intr);
+       scause[Cause]       = zero_extend(c);
 
-       mstatus->SPIE() = mstatus.SIE();
-       mstatus->SIE()  = 0b0;
-       mstatus->SPP()  = match cur_privilege {
+       mstatus[SPIE] = mstatus[SIE];
+       mstatus[SIE]  = 0b0;
+       mstatus[SPP]  = match cur_privilege {
                            User => 0b0,
                            Supervisor => 0b1,
-                           Machine => internal_error("invalid privilege for s-mode trap")
+                           Machine => internal_error(__FILE__, __LINE__, "invalid privilege for s-mode trap")
                          };
        stval           = tval(info);
        sepc            = pc;
@@ -438,30 +236,11 @@ function trap_handler(del_priv : Privilege, intr : bool, c : exc_code, pc : xlen
        handle_trap_extension(del_priv, pc, ext);
 
        if   get_config_print_reg()
-       then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits()));
+       then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits));
 
        prepare_trap_vector(del_priv, scause)
     },
-    User => {
-       assert(haveUsrMode(), "no user mode present for delegation");
-
-       ucause->IsInterrupt() = bool_to_bits(intr);
-       ucause->Cause()       = EXTZ(c);
-
-       mstatus->UPIE() = mstatus.UIE();
-       mstatus->UIE()  = 0b0;
-       utval           = tval(info);
-       uepc            = pc;
-
-       cur_privilege   = del_priv;
-
-       handle_trap_extension(del_priv, pc, ext);
-
-       if   get_config_print_reg()
-       then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits()));
-
-       prepare_trap_vector(del_priv, ucause)
-    }
+    User => internal_error(__FILE__, __LINE__, "Invalid privilege level"),
   };
 }
 
@@ -477,57 +256,41 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result,
     },
     (_, CTL_MRET())  => {
       let prev_priv   = cur_privilege;
-      mstatus->MIE()  = mstatus.MPIE();
-      mstatus->MPIE() = 0b1;
-      cur_privilege   = privLevel_of_bits(mstatus.MPP());
-      mstatus->MPP()  = privLevel_to_bits(if haveUsrMode() then User else Machine);
+      mstatus[MIE]  = mstatus[MPIE];
+      mstatus[MPIE] = 0b1;
+      cur_privilege   = privLevel_of_bits(mstatus[MPP]);
+      mstatus[MPP]  = privLevel_to_bits(if extensionEnabled(Ext_U) then User else Machine);
       if   cur_privilege != Machine
-      then mstatus->MPRV() = 0b0;
+      then mstatus[MPRV] = 0b0;
 
       if   get_config_print_reg()
-      then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits()));
+      then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits));
       if   get_config_print_platform()
       then print_platform("ret-ing from " ^ to_str(prev_priv) ^ " to " ^ to_str(cur_privilege));
 
-      cancel_reservation();
-      prepare_xret_target(Machine) & pc_alignment_mask()
+      prepare_xret_target(Machine)
     },
     (_, CTL_SRET())  => {
       let prev_priv   = cur_privilege;
-      mstatus->SIE()  = mstatus.SPIE();
-      mstatus->SPIE() = 0b1;
-      cur_privilege   = if mstatus.SPP() == 0b1 then Supervisor else User;
-      mstatus->SPP()  = 0b0;
+      mstatus[SIE]  = mstatus[SPIE];
+      mstatus[SPIE] = 0b1;
+      cur_privilege   = if mstatus[SPP] == 0b1 then Supervisor else User;
+      mstatus[SPP]  = 0b0;
       if   cur_privilege != Machine
-      then mstatus->MPRV() = 0b0;
+      then mstatus[MPRV] = 0b0;
 
       if   get_config_print_reg()
-      then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits()));
+      then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits));
       if   get_config_print_platform()
       then print_platform("ret-ing from " ^ to_str(prev_priv)
                           ^ " to " ^ to_str(cur_privilege));
 
-      cancel_reservation();
-      prepare_xret_target(Supervisor) & pc_alignment_mask()
+      prepare_xret_target(Supervisor)
     },
-    (_, CTL_URET())  => {
-      let prev_priv   = cur_privilege;
-      mstatus->UIE()  = mstatus.UPIE();
-      mstatus->UPIE() = 0b1;
-      cur_privilege   = User;
-
-      if   get_config_print_reg()
-      then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits()));
-      if   get_config_print_platform()
-      then print_platform("ret-ing from " ^ to_str(prev_priv) ^ " to " ^ to_str(cur_privilege));
-
-      cancel_reservation();
-      prepare_xret_target(User) & pc_alignment_mask()
-    }
   }
 }
 
-function handle_mem_exception(addr : xlenbits, e : ExceptionType) -> unit = {
+function handle_mem_exception(virtaddr(addr) : virtaddr, e : ExceptionType) -> unit = {
   let t : sync_exception = struct { trap    = e,
                                     excinfo = Some(addr),
                                     ext     = None() } in
@@ -544,80 +307,96 @@ function handle_exception(e: ExceptionType) -> unit = {
 function handle_interrupt(i : InterruptType, del_priv : Privilege) -> unit =
   set_next_pc(trap_handler(del_priv, true, interruptType_to_bits(i), PC, None(), None()))
 
-/* state state initialization */
-
-function init_sys() -> unit = {
-  cur_privilege = Machine;
-
-  mhartid     = EXTZ(0b0);
-
-  misa->MXL() = arch_to_bits(if sizeof(xlen) == 32 then RV32 else RV64);
-  misa->A()   = 0b1;                            /* atomics */
-  misa->C()   = bool_to_bits(sys_enable_rvc()); /* RVC */
-  misa->I()   = 0b1;                            /* base integer ISA */
-  misa->M()   = 0b1;                            /* integer multiply/divide */
-  misa->U()   = 0b1;                            /* user-mode */
-  misa->S()   = 0b1;                            /* supervisor-mode */
+// Reset misa to enable the maximal set of supported extensions.
+function reset_misa() -> unit = {
+  misa[A]   = 0b1;                             /* atomics */
+  misa[C]   = bool_to_bits(sys_enable_rvc());  /* RVC */
+  misa[B]   = bool_to_bits(sys_enable_bext()); /* Bit-manipulation */
+  misa[I]   = 0b1;                             /* base integer ISA */
+  misa[M]   = 0b1;                             /* integer multiply/divide */
+  misa[U]   = bool_to_bits(sys_enable_user()); /* user-mode */
+  misa[S]   = bool_to_bits(sys_enable_supervisor()); /* supervisor-mode */
+  misa[V]   = bool_to_bits(sys_enable_vext()); /* vector extension */
 
   if   sys_enable_fdext() & sys_enable_zfinx()
-  then internal_error("F and Zfinx cannot both be enabled!");
+  then internal_error(__FILE__, __LINE__, "F and Zfinx cannot both be enabled!");
 
   /* We currently support both F and D */
-  misa->F()   = bool_to_bits(sys_enable_fdext());      /* single-precision */
-  misa->D()   = if   sizeof(flen) >= 64
-                then bool_to_bits(sys_enable_fdext())  /* double-precision */
-                else 0b0;
+  misa[F]   = bool_to_bits(sys_enable_fdext());      /* single-precision */
+  misa[D]   = if   flen >= 64
+              then bool_to_bits(sys_enable_fdext())  /* double-precision */
+              else 0b0;
+}
 
-  mstatus = set_mstatus_SXL(mstatus, misa.MXL());
-  mstatus = set_mstatus_UXL(mstatus, misa.MXL());
-  mstatus->SD()   = 0b0;
+// This function is called on reset, so it should only perform the reset actions
+// described in the "Reset" section of the privileged architecture specification.
+function reset_sys() -> unit = {
 
-  /* set to little-endian mode */
-  if sizeof(xlen) == 64 then {
-    mstatus = Mk_Mstatus([mstatus.bits() with 37 .. 36 = 0b00])
-  };
-  mstatush->bits() = EXTZ(0b0);
+  // "Upon reset, a hart's privilege mode is set to M."
+  cur_privilege = Machine;
 
-  mip->bits()     = EXTZ(0b0);
-  mie->bits()     = EXTZ(0b0);
-  mideleg->bits() = EXTZ(0b0);
-  medeleg->bits() = EXTZ(0b0);
-  mtvec->bits()   = EXTZ(0b0);
-  mcause->bits()  = EXTZ(0b0);
-  mepc            = EXTZ(0b0);
-  mtval           = EXTZ(0b0);
-  mscratch        = EXTZ(0b0);
+  // "The mstatus fields MIE and MPRV are reset to 0."
+  mstatus[MIE] = 0b0;
+  mstatus[MPRV] = 0b0;
 
-  mcycle          = EXTZ(0b0);
-  mtime           = EXTZ(0b0);
+  // "If little-endian memory accesses are supported, the mstatus/mstatush field
+  // MBE is reset to 0."
+  // TODO: The handling of mstatush is a bit awkward currently, but the model
+  // currently only supports little endian so MBE is always 0.
+  // See https://github.com/riscv/sail-riscv/issues/639
+  // mstatus[MBE] = 0b0;
 
-  mcounteren->bits() = EXTZ(0b0);
+  // "The misa register is reset to enable the maximal set of supported extensions"
+  reset_misa();
 
-  minstret           = EXTZ(0b0);
-  minstret_written   = false;
+  // "For implementations with the "A" standard extension, there is no valid load reservation."
+  cancel_reservation();
 
-  init_pmp();
+  // "The pc is set to an implementation-defined reset vector."
+  // This is outside the scope of this function.
+
+  // "The mcause register is set to a value indicating the cause of the reset."
+  // "The mcause values after reset have implementation-specific interpretation,
+  // but the value 0 should be returned on implementations that do not
+  // distinguish different reset conditions."
+  mcause.bits = zeros();
+
+  // "Writable PMP registers’ A and L fields are set to 0, unless the platform
+  // mandates a different reset value for some PMP registers’ A and L fields."
+  reset_pmp();
+
+  // TODO: Probably need to remove these vector resets too but it needs
+  // refactoring anyway. See https://github.com/riscv/sail-riscv/issues/566 etc.
+
+  /* initialize vector csrs */
+  vstart             = zeros();
+  vl                 = zeros();
+  vcsr[vxrm]       = 0b00;
+  vcsr[vxsat]      = 0b0;
+  vtype[vill]      = 0b1;
+  vtype[reserved]  = zeros();
+  vtype[vma]       = 0b0;
+  vtype[vta]       = 0b0;
+  vtype[vsew]      = 0b000;
+  vtype[vlmul]     = 0b000;
 
   // log compatibility with spike
   if   get_config_print_reg()
-  then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits()) ^ " (input: " ^ BitStr(EXTZ(0b0) : xlenbits) ^ ")")
+  then print_reg("CSR mstatus <- " ^ BitStr(mstatus.bits) ^ " (input: " ^ BitStr(zeros() : xlenbits) ^ ")")
 }
 
 /* memory access exceptions, defined here for use by the platform model. */
 
-union MemoryOpResult ('a : Type) = {
-  MemValue     : 'a,
-  MemException : ExceptionType
-}
+type MemoryOpResult('a : Type) = result('a, ExceptionType)
 
 val MemoryOpResult_add_meta : forall ('t : Type). (MemoryOpResult('t), mem_meta) -> MemoryOpResult(('t, mem_meta))
 function MemoryOpResult_add_meta(r, m) = match r {
-  MemValue(v)     => MemValue(v, m),
-  MemException(e) => MemException(e)
+  Ok(v)  => Ok(v, m),
+  Err(e) => Err(e)
 }
 
 val MemoryOpResult_drop_meta : forall ('t : Type). MemoryOpResult(('t, mem_meta)) -> MemoryOpResult('t)
 function MemoryOpResult_drop_meta(r) = match r {
-  MemValue(v, m)  => MemValue(v),
-  MemException(e) => MemException(e)
+  Ok(v, m)  => Ok(v),
+  Err(e) => Err(e)
 }
