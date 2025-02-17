@@ -1,3 +1,11 @@
+/*=======================================================================================*/
+/*  This Sail RISC-V architecture model, comprising all files and                        */
+/*  directories except where otherwise noted is subject the BSD                          */
+/*  two-clause license in the LICENSE file.                                              */
+/*                                                                                       */
+/*  SPDX-License-Identifier: BSD-2-Clause                                                */
+/*=======================================================================================*/
+
 /*
  * This file contains types, mappings and functions used across the
  * cryptography extension instructions.
@@ -5,7 +13,7 @@
  * This file must be included in the model build whatever the value of XLEN.
  */
 
-/* 
+/*
  * Cryptography extension shared / utility functions
  * ----------------------------------------------------------------------
  */
@@ -74,7 +82,7 @@ function aes_mixcolumn_inv(x) = {
    do not decode to the AES64KS1I instruction. The 0xA case is used
    specifically for the AES-256 KeySchedule, and this function is never
    called in that case. */
-val aes_decode_rcon : bits(4) -> bits(32) effect {escape}
+val aes_decode_rcon : bits(4) -> bits(32)
 function aes_decode_rcon(r) = {
   assert(r <_u 0xA);
   match r {
@@ -87,12 +95,13 @@ function aes_decode_rcon(r) = {
     0x6 => 0x00000040,
     0x7 => 0x00000080,
     0x8 => 0x0000001b,
-    0x9 => 0x00000036
+    0x9 => 0x00000036,
+    _   => internal_error(__FILE__, __LINE__, "Unexpected AES r") /* unreachable -- required to silence Sail warning */
   }
 }
 
 /* SM4 SBox - only one sbox for forwards and inverse */
-let sm4_sbox_table : list(bits(8)) = [|
+let sm4_sbox_table : vector(256, bits(8)) = [
 0xD6, 0x90, 0xE9, 0xFE, 0xCC, 0xE1, 0x3D, 0xB7, 0x16, 0xB6, 0x14, 0xC2, 0x28,
 0xFB, 0x2C, 0x05, 0x2B, 0x67, 0x9A, 0x76, 0x2A, 0xBE, 0x04, 0xC3, 0xAA, 0x44,
 0x13, 0x26, 0x49, 0x86, 0x06, 0x99, 0x9C, 0x42, 0x50, 0xF4, 0x91, 0xEF, 0x98,
@@ -113,9 +122,9 @@ let sm4_sbox_table : list(bits(8)) = [|
 0xE5, 0xB4, 0xB0, 0x89, 0x69, 0x97, 0x4A, 0x0C, 0x96, 0x77, 0x7E, 0x65, 0xB9,
 0xF1, 0x09, 0xC5, 0x6E, 0xC6, 0x84, 0x18, 0xF0, 0x7D, 0xEC, 0x3A, 0xDC, 0x4D,
 0x20, 0x79, 0xEE, 0x5F, 0x3E, 0xD7, 0xCB, 0x39, 0x48
-|]
+]
 
-let aes_sbox_fwd_table : list(bits(8)) = [|
+let aes_sbox_fwd_table : vector(256, bits(8)) = [
 0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe,
 0xd7, 0xab, 0x76, 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4,
 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0, 0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7,
@@ -136,9 +145,9 @@ let aes_sbox_fwd_table : list(bits(8)) = [|
 0xc1, 0x1d, 0x9e, 0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e,
 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf, 0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42,
 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
-|]
-    
-let aes_sbox_inv_table : list(bits(8)) = [|
+]
+
+let aes_sbox_inv_table : vector(256, bits(8)) = [
 0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81,
 0xf3, 0xd7, 0xfb, 0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e,
 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb, 0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23,
@@ -159,17 +168,15 @@ let aes_sbox_inv_table : list(bits(8)) = [|
 0xc9, 0x9c, 0xef, 0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb,
 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61, 0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6,
 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
-|]
+]
 
-/* Lookup function - takes an index and a list, and retrieves the
- * x'th element of that list.
+/* Lookup function - takes an index and a table, and retrieves the
+ * x'th element of that table. Note that the Sail vector literals
+ * start at index 255, and go down to 0.
  */
-val sbox_lookup : (bits(8), list(bits(8))) -> bits(8)
+val sbox_lookup : (bits(8), vector(256, bits(8))) -> bits(8)
 function sbox_lookup(x, table) = {
-  match (x, table) {
-    (0x00, t0::tn) => t0,
-    (   y, t0::tn) => sbox_lookup(x - 0x01, tn)
-  }
+  table[255 - unsigned(x)]
 }
 
 /* Easy function to perform a forward AES SBox operation on 1 byte. */
@@ -199,7 +206,7 @@ function aes_subword_inv(x) = {
   aes_sbox_inv(x[31..24]) @
   aes_sbox_inv(x[23..16]) @
   aes_sbox_inv(x[15.. 8]) @
-  aes_sbox_inv(x[ 7.. 0]) 
+  aes_sbox_inv(x[ 7.. 0])
 }
 
 /* Easy function to perform an SM4 SBox operation on 1 byte. */
@@ -225,7 +232,7 @@ function aes_apply_fwd_sbox_to_each_byte(x) = {
 }
 
 /* 64-bit to 64-bit function which applies the AES inverse sbox to each byte
- * in a 64-bit word. 
+ * in a 64-bit word.
  */
 val aes_apply_inv_sbox_to_each_byte : bits(64) -> bits(64)
 function aes_apply_inv_sbox_to_each_byte(x) = {
@@ -270,20 +277,20 @@ function aes_rv64_shiftrows_inv(rs2, rs1) = {
   getbyte(rs1, 0)
 }
 
-/* 128-bit to 128-bit implementation of the forward AES ShiftRows transform. 
+/* 128-bit to 128-bit implementation of the forward AES ShiftRows transform.
  * Byte 0 of state is input column 0, bits  7..0.
  * Byte 5 of state is input column 1, bits 15..8.
  */
 val aes_shift_rows_fwd : bits(128) -> bits(128)
 function aes_shift_rows_fwd(x) = {
-  let ic3 : bits(32) = aes_get_column(x, 3); 
-  let ic2 : bits(32) = aes_get_column(x, 2); 
-  let ic1 : bits(32) = aes_get_column(x, 1); 
-  let ic0 : bits(32) = aes_get_column(x, 0); 
-  let oc0 : bits(32) = ic0[31..24] @ ic1[23..16] @ ic2[15.. 8] @ ic3[ 7.. 0];
-  let oc1 : bits(32) = ic1[31..24] @ ic2[23..16] @ ic3[15.. 8] @ ic0[ 7.. 0];
-  let oc2 : bits(32) = ic2[31..24] @ ic3[23..16] @ ic0[15.. 8] @ ic1[ 7.. 0];
-  let oc3 : bits(32) = ic3[31..24] @ ic0[23..16] @ ic1[15.. 8] @ ic2[ 7.. 0];
+  let ic3 : bits(32) = aes_get_column(x, 3);
+  let ic2 : bits(32) = aes_get_column(x, 2);
+  let ic1 : bits(32) = aes_get_column(x, 1);
+  let ic0 : bits(32) = aes_get_column(x, 0);
+  let oc0 : bits(32) = ic3[31..24] @ ic2[23..16] @ ic1[15.. 8] @ ic0[ 7.. 0];
+  let oc1 : bits(32) = ic0[31..24] @ ic3[23..16] @ ic2[15.. 8] @ ic1[ 7.. 0];
+  let oc2 : bits(32) = ic1[31..24] @ ic0[23..16] @ ic3[15.. 8] @ ic2[ 7.. 0];
+  let oc3 : bits(32) = ic2[31..24] @ ic1[23..16] @ ic0[15.. 8] @ ic3[ 7.. 0];
   (oc3 @ oc2 @ oc1 @ oc0) /* Return value */
 }
 
@@ -294,13 +301,13 @@ function aes_shift_rows_fwd(x) = {
 val aes_shift_rows_inv : bits(128) -> bits(128)
 function aes_shift_rows_inv(x) = {
   let ic3 : bits(32) = aes_get_column(x, 3); /* In column 3 */
-  let ic2 : bits(32) = aes_get_column(x, 2); 
-  let ic1 : bits(32) = aes_get_column(x, 1); 
-  let ic0 : bits(32) = aes_get_column(x, 0); 
-  let oc0 : bits(32) = ic0[31..24] @ ic3[23..16] @ ic2[15.. 8] @ ic1[ 7.. 0];
-  let oc1 : bits(32) = ic1[31..24] @ ic0[23..16] @ ic3[15.. 8] @ ic2[ 7.. 0];
-  let oc2 : bits(32) = ic2[31..24] @ ic1[23..16] @ ic0[15.. 8] @ ic3[ 7.. 0];
-  let oc3 : bits(32) = ic3[31..24] @ ic2[23..16] @ ic1[15.. 8] @ ic0[ 7.. 0];
+  let ic2 : bits(32) = aes_get_column(x, 2);
+  let ic1 : bits(32) = aes_get_column(x, 1);
+  let ic0 : bits(32) = aes_get_column(x, 0);
+  let oc0 : bits(32) = ic1[31..24] @ ic2[23..16] @ ic3[15.. 8] @ ic0[ 7.. 0];
+  let oc1 : bits(32) = ic2[31..24] @ ic3[23..16] @ ic0[15.. 8] @ ic1[ 7.. 0];
+  let oc2 : bits(32) = ic3[31..24] @ ic0[23..16] @ ic1[15.. 8] @ ic2[ 7.. 0];
+  let oc3 : bits(32) = ic0[31..24] @ ic1[23..16] @ ic2[15.. 8] @ ic3[ 7.. 0];
   (oc3 @ oc2 @ oc1 @ oc0) /* Return value */
 }
 
